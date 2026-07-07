@@ -547,7 +547,7 @@ subscribe(
     if (!waiting) return
     if (body.chatId !== activeChatId) return
 
-    if (body.kind !== 'chat-query') {
+    if (body.kind !== 'chat-query' && partial?.tokens !== body.partial) {
       responseStore.setState({
         partial: { id: body.partialId, tokens: body.partial, thoughts: partial?.thoughts },
       })

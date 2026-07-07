@@ -72,6 +72,8 @@ export const handleThirdParty: ModelAdapter = async function* (opts) {
 
   let accum = ''
   let wait = 0
+  let lastToken = ''
+  let repeatCount = 0
 
   for await (const generated of stream) {
     if (!generated) break
@@ -87,10 +89,21 @@ export const handleThirdParty: ModelAdapter = async function* (opts) {
     }
 
     if ('token' in generated) {
+      const token = generated.token || ''
+      if (!token) continue
+
+      if (token === lastToken) {
+        repeatCount++
+        if (repeatCount >= 2) break
+      } else {
+        lastToken = token
+        repeatCount = 0
+      }
+
       if (!wait) {
         wait = round((Date.now() - start) / 1000)
       }
-      accum += generated.token
+      accum += token
       yield { partial: accum }
     }
 

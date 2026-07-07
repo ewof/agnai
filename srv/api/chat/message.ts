@@ -14,6 +14,7 @@ import { isDefaultTemplate, templates } from '/common/presets/templates'
 import { Response } from 'express'
 import { getAdapter } from '/common/adapters'
 import { getResponseVariable, prepareJsonSchema } from '/common/guidance/json-schema'
+import { onClientDisconnect, setSSEHeaders } from '../stream'
 
 type GenRequest = UnwrapBody<typeof genValidator>
 type MsgEntities = Awaited<ReturnType<typeof getMessageEntities>>
@@ -161,11 +162,7 @@ export const generateMessageV2 = handle(async (req, res) => {
   }
 
   if (body.eventStream) {
-    res.setHeader('Cache-Control', 'no-cache')
-    res.setHeader('Content-Type', 'text/event-stream')
-    res.setHeader('Access-Control-Allow-Origin', '*')
-    res.setHeader('Connection', 'keep-alive')
-    res.flushHeaders()
+    setSSEHeaders(res)
   }
 
   const ents = await getMessageEntities(req, res)
@@ -236,26 +233,29 @@ export const generateMessageV2 = handle(async (req, res) => {
   // When undefined, we'll generate the response
   let signal: AbortController | null = new AbortController()
 
+  let removeDisconnect: (() => void) | undefined
+
   if (body.response === undefined) {
-    const listener = () => {
-      if (!signal) return
-      if (generated) return
-
-      signal.abort()
-
-      sendMsg(ents, {
-        type: 'message-error',
-        error: 'inference cancelled by user',
-        adapter,
-        chatId,
-        requestId,
-      })
-
-      res.status(499).end()
-    }
-
     if (body.eventStream) {
-      req.socket.on('end', listener)
+      removeDisconnect = onClientDisconnect(req, res, () => {
+        if (!signal) return
+        signal.abort()
+
+        // Proxy resets can close the socket mid-stream; don't treat that as a user cancel.
+        if (generated || partial) return
+
+        sendMsg(ents, {
+          type: 'message-error',
+          error: 'inference cancelled by user',
+          adapter,
+          chatId,
+          requestId,
+        })
+
+        if (!res.writableEnded) {
+          res.status(499).end()
+        }
+      })
     }
 
     setTextStreamHeaders(res, ents, body, userMsg)
@@ -422,7 +422,7 @@ export const generateMessageV2 = handle(async (req, res) => {
       }
     }
 
-    req.socket.removeAllListeners('end')
+    removeDisconnect?.()
 
     generated = body.kind === 'continue' ? `${body.continuing.msg} ${generated}` : generated
     if (hydration?.response) {

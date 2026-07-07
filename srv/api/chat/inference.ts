@@ -16,6 +16,7 @@ import { getCachedSubscriptionModels, getCachedTiers } from '/srv/db/subscriptio
 import { getSubscriptionModelLimits, getUserSubscriptionTier } from '/common/util'
 import { renderMessagesToPrompt } from '/common/template-messages'
 import { optional } from '/common/valid/types'
+import { onClientDisconnect, setSSEHeaders } from '../stream'
 
 const validInference = {
   prompt: 'string',
@@ -84,12 +85,15 @@ export const inferenceStream = wrap(async (req, res) => {
 
   const isEventStream = req.headers.accept === 'text/event-stream'
   const signal = new AbortController()
+  let removeDisconnect: (() => void) | undefined
 
   if (isEventStream) {
-    req.socket.on('end', () => {
+    removeDisconnect = onClientDisconnect(req, res, () => {
       if (signal.signal.aborted) return
       signal.abort()
-      res.status(499).end()
+      if (!res.writableEnded) {
+        res.status(499).end()
+      }
     })
   }
 
@@ -119,11 +123,7 @@ export const inferenceStream = wrap(async (req, res) => {
   if (!isEventStream) {
     res.json({ requestId, success: true, generating: true })
   } else {
-    res.setHeader('Cache-Control', 'no-cache')
-    res.setHeader('Content-Type', 'text/event-stream')
-    res.setHeader('Access-Control-Allow-Origin', '*')
-    res.setHeader('Connection', 'keep-alive')
-    res.flushHeaders()
+    setSSEHeaders(res)
     res.write(
       `data: ${JSON.stringify({ generating: true, success: true, requestId: body.requestId })}\n\n`
     )
@@ -140,6 +140,7 @@ export const inferenceStream = wrap(async (req, res) => {
     const aborted = signal.signal.aborted
     if (isEventStream && !aborted) {
       res.write(`data: ${JSON.stringify(data)}\n\n`)
+      return
     }
 
     if (!userId) {
@@ -223,11 +224,16 @@ export const inferenceStream = wrap(async (req, res) => {
     }
   }
 
+  if (!response && partial) {
+    response = partial
+  }
+
   wrapped({ type: 'inference', requestId, response })
   await releaseLock(lockId)
+  removeDisconnect?.()
 
   if (isEventStream) {
-    res.write(`data: [DONE]`)
+    res.write(`data: [DONE]\n\n`)
     res.end()
   }
 })
@@ -457,11 +463,7 @@ export const inferenceApi = wrap(async (req, res) => {
     }
   }
 
-  res.setHeader('Cache-Control', 'no-cache')
-  res.setHeader('Content-Type', 'text/event-stream')
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Connection', 'keep-alive')
-  res.flushHeaders()
+  setSSEHeaders(res)
 
   const { stream } = await createInferenceStream(request)
 
@@ -469,7 +471,7 @@ export const inferenceApi = wrap(async (req, res) => {
 
   for await (const gen of stream) {
     if (typeof gen === 'string') {
-      res.write('data: [DONE]')
+      res.write('data: [DONE]\n\n')
       break
     }
 

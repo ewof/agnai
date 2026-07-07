@@ -4,6 +4,7 @@ import { assertValid, UnwrapBody } from '/common/valid'
 import { createInferenceStream } from '/srv/adapter/generate'
 import { sendGuest, sendMany, sendOne } from '../ws'
 import { store } from '/srv/db'
+import { setSSEHeaders } from '../stream'
 
 const validInference = {
   requestId: 'string',
@@ -148,11 +149,7 @@ async function handleStream(opts: {
 }
 
 function toEventStream(res: Response) {
-  res.setHeader('Cache-Control', 'no-cache')
-  res.setHeader('Content-Type', 'text/event-stream')
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Connection', 'keep-alive')
-  res.flushHeaders()
+  setSSEHeaders(res)
 }
 
 async function getBroadcastMembers(opts: { chatId: string; userId: string }) {

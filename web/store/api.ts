@@ -399,6 +399,7 @@ export function fetchSSE(opts: SSEOpts) {
       switch (json.type) {
         case 'message-partial':
         case 'inference-partial':
+          if (accum === json.partial) break
           accum = json.partial
           opts.onTick?.(json.partial, 'partial')
           break

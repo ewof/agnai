@@ -1280,15 +1280,27 @@ function getMessageContent(
   const isRetry = props.retrying?._id === msg._id
   const isPartial = msg._id === 'partial-response'
 
+  const baseStops = preset?.stopSequences || []
+  const sender = msg.characterId
+    ? ctx.allBots[msg.characterId]?.name
+    : msg.userId
+    ? ctx.profileMap[msg.userId]?.handle
+    : ''
+
+  const allStops = (preset?.disableNameStops ? baseStops : baseStops.concat(ctx.nameStops)).filter(
+    (name) => name !== sender + ':'
+  )
+
   if (isRetry || isPartial) {
     const { thoughts, content } = extractReasoning(props.partial ? props.partial : msg.msg, {
       tags: preset?.reasoning,
       display: ctx.ui.displayReasoning,
     })
     if (props.partial) {
+      const trimmed = stopResponse({ text: content, author: sender, stops: allStops })
       return {
         type: 'partial' as const,
-        message: renderMessage(ctx, preset, content, false, 'partial'),
+        message: renderMessage(ctx, preset, trimmed, false, 'partial'),
         thoughts,
         class: 'streaming-markdown',
         generating: true,
@@ -1333,17 +1345,6 @@ function getMessageContent(
   if (ctx.trimSentences && !msg.userId) {
     message = trimSentence(message)
   }
-
-  const baseStops = preset?.stopSequences || []
-  const sender = msg.characterId
-    ? ctx.allBots[msg.characterId]?.name
-    : msg.userId
-    ? ctx.profileMap[msg.userId]?.handle
-    : ''
-
-  const allStops = (preset?.disableNameStops ? baseStops : baseStops.concat(ctx.nameStops)).filter(
-    (name) => name !== sender + ':'
-  )
 
   const trimmed = stopResponse({ text: message, author: sender, stops: allStops })
 

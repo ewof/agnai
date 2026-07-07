@@ -45,6 +45,26 @@ export function sanitise(generated: string) {
   return (generated || '').trim()
 }
 
+export function trimAtStops(text: string, stops: string[]) {
+  let generated = text || ''
+  let index = -1
+
+  const trimmed = stops.reduce((prev, endToken) => {
+    const idx = generated.indexOf(endToken)
+    if (idx === -1) return prev
+
+    const next = generated.slice(0, idx)
+    if (index === -1 || idx < index) {
+      index = idx
+      return next
+    }
+
+    return prev
+  }, '')
+
+  return index === -1 ? generated : trimmed || generated
+}
+
 export function getChoiceProp<T = any>(json: any, prop: string, assign?: any) {
   const choice = json?.choices?.[0]
   let value = choice?.delta?.[prop] || choice?.[prop] || json?.[prop]
