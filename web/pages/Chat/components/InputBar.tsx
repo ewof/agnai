@@ -322,8 +322,8 @@ const InputBar: Component<{
             classList={{ '!w-full': window.flags.debug === true }}
           >
             <TextInput
-              class="max-h-[80px] !outline-0"
-              parentClass="!p-0.5 text-sm flex flex-1"
+              class="response-hint-input max-h-[80px] !outline-0"
+              parentClass="!p-0.5 flex flex-1"
               placeholder="Response hint..."
               value={prompt.hint}
               onChange={(ev) =>
